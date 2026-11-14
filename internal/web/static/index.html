@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="slimdb-token" content="{{TOKEN}}">
+  <title>slimdb</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="side-head">
+      <span class="brand">slimdb</span>
+      <button id="addConn" class="icon-btn" title="New connection">+</button>
+    </div>
+    <input id="treeFilter" type="search" placeholder="Filter tables…" autocomplete="off">
+    <div id="tree" role="tree"></div>
+  </aside>
+
+  <main>
+    <div class="toolbar">
+      <span id="activeConn" class="active-conn">No connection selected</span>
+      <select id="dbSelect" title="MongoDB database" hidden></select>
+      <button id="runBtn" class="primary" title="Run selection or the block at the cursor (Ctrl/Cmd+Enter)">▶ Run</button>
+      <button id="runAllBtn" title="Run the whole editor (Ctrl/Cmd+Shift+Enter)">Run all</button>
+      <button id="explainBtn" title="Explain the selection or the block at the cursor">Explain</button>
+      <label class="analyze" title="Run the statement for real timings (Postgres rolls it back)"><input id="analyze" type="checkbox"> analyze</label>
+      <button id="cancelBtn" class="danger" hidden>Cancel</button>
+      <span class="spacer"></span>
+      <label>Limit
+        <select id="limit">
+          <option>100</option><option selected>500</option><option>1000</option><option>5000</option><option>20000</option>
+        </select>
+      </label>
+      <button id="historyBtn">History</button>
+    </div>
+
+    <div id="editorPane">
+      <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"
+        placeholder="Pick a connection on the left, then write a query.&#10;&#10;Postgres:  select * from users limit 10;&#10;MongoDB:   db.users.find({ age: { $gt: 30 } }).sort({ name: 1 })&#10;&#10;Ctrl/Cmd+Enter runs the selection, or the block around the cursor (blocks are separated by a blank line)."></textarea>
+    </div>
+
+    <div id="splitter" title="Drag to resize"></div>
+
+    <section id="results">
+      <div class="results-head">
+        <div id="resultTabs" role="tablist"></div>
+        <span class="spacer"></span>
+        <div id="viewToggle" hidden>
+          <button data-view="grid" class="on">Grid</button><button data-view="json">JSON</button>
+        </div>
+        <button id="copyCsv" hidden>Copy CSV</button>
+        <button id="copyJson" hidden>Copy JSON</button>
+      </div>
+      <div id="resultMeta"></div>
+      <div id="resultBody"><div class="empty">Results show up here.</div></div>
+    </section>
+  </main>
+
+  <dialog id="connDialog">
+    <form method="dialog" id="connForm">
+      <h2 id="connTitle">New connection</h2>
+      <label>Name <input name="name" required placeholder="local-postgres"></label>
+      <label>URL <input name="url" required placeholder="postgres://user:pass@localhost:5432/app"></label>
+      <p class="hint">postgres://user:pass@host:5432/db or mongodb://user:pass@host:27017/db. Saved in plain text in your config folder (file mode 0600).</p>
+      <label class="check"><input type="checkbox" name="readOnly"> Read-only (refuse writes, also for MCP)</label>
+      <div id="connStatus" class="status"></div>
+      <div class="dialog-actions">
+        <button type="button" id="connDelete" class="danger" hidden>Delete</button>
+        <span class="spacer"></span>
+        <button type="button" id="connTest">Test</button>
+        <button type="button" id="connCancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="historyDialog">
+    <div class="dialog-head"><h2>History</h2><button class="icon-btn" data-close>×</button></div>
+    <p class="hint">Click an entry to put it back in the editor. Entries from AI agents are marked mcp.</p>
+    <div id="historyList"></div>
+  </dialog>
+
+  <dialog id="cellDialog">
+    <div class="dialog-head"><h2 id="cellTitle">Value</h2><button class="icon-btn" data-close>×</button></div>
+    <pre id="cellValue"></pre>
+    <div class="dialog-actions"><span class="spacer"></span><button id="cellCopy">Copy</button></div>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

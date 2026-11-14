@@ -1,0 +1,4 @@
+/slimdb
+/dist/
+*.test
+.DS_Store
