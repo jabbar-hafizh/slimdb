@@ -31,6 +31,27 @@ Download a binary for macOS, Linux or Windows from
 go install github.com/jabbar-hafizh/slimdb/cmd/slimdb@latest
 ```
 
+### Docker
+
+Runs in the background, starts with Docker, and keeps connections in a volume:
+
+```sh
+docker run -d --name slimdb --restart unless-stopped \
+  -p 127.0.0.1:7788:7788 -v slimdb-data:/data \
+  --add-host host.docker.internal:host-gateway \
+  ghcr.io/jabbar-hafizh/slimdb:latest
+```
+
+or, from a clone of this repo, `docker compose up -d`. Then open http://localhost:7788.
+
+- `localhost` in a connection URL means your machine, not the container: the image
+  rewrites it to `host.docker.internal` (set `SLIMDB_LOCALHOST_ALIAS=` to turn that off).
+  For databases in other containers, use their container or service name.
+- Keep the port published on `127.0.0.1` as above. Anyone who can reach the port
+  can run queries.
+- Manage connections from the terminal with `docker exec slimdb slimdb conn add ...`.
+- MCP through the running container: `claude mcp add slimdb -- docker exec -i slimdb slimdb mcp`
+
 ## Quick start
 
 ```sh
@@ -119,7 +140,9 @@ claude mcp add slimdb -- slimdb mcp
 }
 ```
 
-Use the full path to the binary if it is not on the client's `PATH`.
+Use the full path to the binary if it is not on the client's `PATH`. With the
+Docker image, use `docker` as the command and `["exec", "-i", "slimdb", "slimdb", "mcp"]`
+as the arguments; the agent then shares the container's saved connections.
 
 > **Agents can write.** The `query` tool runs whatever it is given, including
 > `UPDATE`, `DELETE` and `drop()`. Mark a connection read-only (in the UI or with

@@ -5,6 +5,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/jabbar-hafizh/slimdb/internal/store"
@@ -52,12 +53,15 @@ type Driver interface {
 	Close()
 }
 
+// Open connects to c. When SLIMDB_LOCALHOST_ALIAS is set (the Docker image
+// sets it), localhost in the URL is replaced by that host first.
 func Open(ctx context.Context, c store.Conn) (Driver, error) {
+	url := rewriteLocalhost(c.URL, os.Getenv("SLIMDB_LOCALHOST_ALIAS"))
 	switch c.Kind {
 	case store.KindPostgres:
-		return openPostgres(ctx, c.URL, c.ReadOnly)
+		return openPostgres(ctx, url, c.ReadOnly)
 	case store.KindMongo:
-		return openMongo(ctx, c.URL, c.ReadOnly)
+		return openMongo(ctx, url, c.ReadOnly)
 	}
 	return nil, fmt.Errorf("unknown connection kind %q", c.Kind)
 }

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -93,7 +94,10 @@ func serve(ctx context.Context, st *store.Store, args []string) error {
 	if err != nil {
 		return err
 	}
-	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+	// Inside a container the server must listen on all interfaces; the
+	// Docker image opts in, and the port should be published on 127.0.0.1.
+	listenAny := os.Getenv("SLIMDB_LISTEN_ANY") == "1"
+	if ip := net.ParseIP(host); !listenAny && host != "localhost" && (ip == nil || !ip.IsLoopback()) {
 		return fmt.Errorf("refusing to listen on %s: slimdb runs queries for whoever can reach it, keep it on localhost", *addr)
 	}
 	ln, err := net.Listen("tcp", *addr)
@@ -109,7 +113,8 @@ func serve(ctx context.Context, st *store.Store, args []string) error {
 	defer dbs.CloseAll()
 	srv := &http.Server{Handler: web.New(st, dbs).Handler(), ReadHeaderTimeout: 10 * time.Second}
 
-	url := "http://" + ln.Addr().String()
+	port := ln.Addr().(*net.TCPAddr).Port
+	url := fmt.Sprintf("http://%s", net.JoinHostPort(displayHost(host), strconv.Itoa(port)))
 	fmt.Printf("slimdb %s running at %s (Ctrl+C to stop)\n", version, url)
 	if !*noBrowser {
 		openBrowser(url)
@@ -171,6 +176,14 @@ func connCmd(st *store.Store, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown conn command %q", args[0])
+}
+
+// displayHost turns a wildcard listen address into one a browser can open.
+func displayHost(host string) string {
+	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+		return "localhost"
+	}
+	return host
 }
 
 func openBrowser(url string) {

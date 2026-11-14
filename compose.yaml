@@ -1,0 +1,16 @@
+# docker compose up -d   then open http://localhost:7788
+services:
+  slimdb:
+    image: ghcr.io/jabbar-hafizh/slimdb:latest
+    build: .
+    container_name: slimdb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7788:7788" # localhost only: slimdb runs queries for whoever can reach it
+    volumes:
+      - slimdb-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # lets Linux reach databases on the host
+
+volumes:
+  slimdb-data:
