@@ -34,21 +34,25 @@ func Run(ctx context.Context, st *store.Store, dbs *db.Manager, version string) 
 		Description: "List the saved database connections (name, kind, read-only flag). Connection URLs are not returned.",
 	}, s.listConnections)
 	mcp.AddTool(m, &mcp.Tool{
-		Name:        "add_connection",
-		Description: "Save a new connection. The URL must start with postgres://, postgresql://, mongodb:// or mongodb+srv://.",
+		Name: "add_connection",
+		Description: "Save a new connection. The URL starts with postgres://, mysql:// (also MariaDB), sqlserver://, sqlite: " +
+			"(e.g. sqlite:///path/app.db), mongodb:// or mongodb+srv://, or redis:// (rediss:// for TLS).",
 	}, s.addConnection)
 	mcp.AddTool(m, &mcp.Tool{
-		Name:        "list_objects",
-		Description: "List schemas and their tables/views (Postgres) or databases and their collections (MongoDB).",
+		Name: "list_objects",
+		Description: "List schemas or databases and their tables and views (SQL databases), databases and their collections (MongoDB), " +
+			"or databases and their keys with each key's type (Redis, at most 1000 keys per database).",
 	}, s.listObjects)
 	mcp.AddTool(m, &mcp.Tool{
 		Name: "describe",
-		Description: "Describe a table or collection. Postgres: columns, indexes and constraints of e.g. \"public.users\". " +
-			"MongoDB: fields inferred from a sample, and indexes.",
+		Description: "Describe a table, collection or key. SQL databases: columns, indexes and constraints of e.g. \"public.users\" " +
+			"(Postgres), \"shop.users\" (MySQL), \"dbo.Orders\" (SQL Server) or \"users\" (SQLite). " +
+			"MongoDB: fields inferred from a sample, and indexes. Redis: type, TTL and value of a key.",
 	}, s.describe)
 	mcp.AddTool(m, &mcp.Tool{
 		Name: "query",
-		Description: "Run one or more statements and return the results. Postgres takes SQL separated by semicolons. " +
+		Description: "Run one or more statements and return the results. SQL databases take SQL separated by semicolons " +
+			"(SQL Server also accepts GO lines). Redis takes one command per line, e.g. HGETALL user:1. " +
 			"MongoDB takes mongosh syntax, e.g. db.users.find({age: {$gt: 30}}).sort({name: 1}), " +
 			"db.orders.aggregate([...]), db.users.updateOne({...}, {$set: {...}}), db.runCommand({...}), show collections. " +
 			"Statements run in order and stop at the first error. Writes are allowed unless the connection is read-only.",
@@ -56,7 +60,7 @@ func Run(ctx context.Context, st *store.Store, dbs *db.Manager, version string) 
 	mcp.AddTool(m, &mcp.Tool{
 		Name: "explain",
 		Description: "Show the query plan of the first statement. With analyze=true the statement really runs " +
-			"(Postgres rolls it back; MongoDB uses executionStats).",
+			"(Postgres, MySQL and SQL Server roll it back; MongoDB uses executionStats). Not available for Redis.",
 	}, s.explain)
 
 	return m.Run(ctx, &mcp.StdioTransport{})
@@ -76,21 +80,21 @@ type objectsInput struct {
 
 type describeInput struct {
 	Connection string `json:"connection" jsonschema:"connection name or id"`
-	Object     string `json:"object" jsonschema:"Postgres: schema.table, MongoDB: collection name"`
-	Database   string `json:"database,omitempty" jsonschema:"MongoDB database; defaults to the one in the connection URL"`
+	Object     string `json:"object" jsonschema:"SQL: schema.table (or table), MongoDB: collection name, Redis: key"`
+	Database   string `json:"database,omitempty" jsonschema:"MongoDB database, or Redis database number; defaults to the one in the connection URL"`
 }
 
 type queryInput struct {
 	Connection string `json:"connection" jsonschema:"connection name or id"`
-	Query      string `json:"query" jsonschema:"SQL for Postgres, mongosh syntax for MongoDB"`
-	Database   string `json:"database,omitempty" jsonschema:"MongoDB database; defaults to the one in the connection URL"`
+	Query      string `json:"query" jsonschema:"SQL for SQL databases, mongosh syntax for MongoDB, commands for Redis"`
+	Database   string `json:"database,omitempty" jsonschema:"MongoDB database, or Redis database number; defaults to the one in the connection URL"`
 	Limit      int    `json:"limit,omitempty" jsonschema:"maximum rows per statement, default 100, max 1000"`
 }
 
 type explainInput struct {
 	Connection string `json:"connection" jsonschema:"connection name or id"`
 	Query      string `json:"query" jsonschema:"the statement to explain"`
-	Database   string `json:"database,omitempty" jsonschema:"MongoDB database; defaults to the one in the connection URL"`
+	Database   string `json:"database,omitempty" jsonschema:"MongoDB database, or Redis database number; defaults to the one in the connection URL"`
 	Analyze    bool   `json:"analyze,omitempty" jsonschema:"run the statement to get real timings"`
 }
 

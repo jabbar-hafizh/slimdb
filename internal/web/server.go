@@ -57,6 +57,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/connections/{id}/describe", s.describe)
 	mux.HandleFunc("POST /api/connections/{id}/query", s.query)
 	mux.HandleFunc("POST /api/connections/{id}/explain", s.explain)
+	mux.HandleFunc("POST /api/connections/{id}/edit", s.edit)
+	mux.HandleFunc("GET /api/connections/{id}/dump/check", s.checkDump)
+	mux.HandleFunc("GET /api/connections/{id}/dump", s.dump)
+	mux.HandleFunc("POST /api/connections/{id}/import", s.importDump)
 	mux.HandleFunc("GET /api/history", s.history)
 	mux.HandleFunc("POST /api/copy", s.startCopy)
 	mux.HandleFunc("GET /api/copy/{id}", s.getCopy)
@@ -70,8 +74,13 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(w, "slimdb only answers on localhost", http.StatusForbidden)
 			return
 		}
+		token := r.Header.Get(tokenHeader)
+		if token == "" && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/dump") {
+			// A download is a plain link, which cannot send headers.
+			token = r.URL.Query().Get("token")
+		}
 		if strings.HasPrefix(r.URL.Path, "/api/") &&
-			subtle.ConstantTimeCompare([]byte(r.Header.Get(tokenHeader)), []byte(s.token)) != 1 {
+			subtle.ConstantTimeCompare([]byte(token), []byte(s.token)) != 1 {
 			writeError(w, http.StatusUnauthorized, errors.New("missing or wrong token, reload the page"))
 			return
 		}

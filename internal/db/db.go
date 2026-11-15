@@ -24,6 +24,10 @@ type Result struct {
 	Millis    int64    `json:"ms"`
 	Message   string   `json:"message,omitempty"`
 	Error     string   `json:"error,omitempty"`
+	// Edit is set when the rows can be edited in the grid (see edit.go).
+	Edit *EditInfo `json:"edit,omitempty"`
+	// src is where each column came from, for drivers that know it.
+	src []columnSource
 }
 
 type Column struct {
@@ -62,6 +66,14 @@ func Open(ctx context.Context, c store.Conn) (Driver, error) {
 		return openPostgres(ctx, url, c.ReadOnly)
 	case store.KindMongo:
 		return openMongo(ctx, url, c.ReadOnly)
+	case store.KindMySQL:
+		return openMySQL(ctx, url, c.ReadOnly)
+	case store.KindSQLite:
+		return openSQLite(ctx, url, c.ReadOnly)
+	case store.KindSQLServer:
+		return openSQLServer(ctx, url, c.ReadOnly)
+	case store.KindRedis:
+		return openRedis(ctx, url, c.ReadOnly)
 	}
 	return nil, fmt.Errorf("unknown connection kind %q", c.Kind)
 }

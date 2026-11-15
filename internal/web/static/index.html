@@ -34,12 +34,14 @@
         </select>
       </label>
       <button id="historyBtn">History</button>
-      <button id="copyBtn" title="Copy this database into another connection, e.g. dev into local">Copy to…</button>
+      <button id="copyBtn" title="Copy this database into another connection, dump it to a file, or import a dump">Dump / Import…</button>
     </div>
+
+    <div id="qtabs" role="tablist" aria-label="Query tabs"></div>
 
     <div id="editorPane">
       <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"
-        placeholder="Pick a connection on the left, then write a query.&#10;&#10;Postgres:  select * from users limit 10;&#10;MongoDB:   db.users.find({ age: { $gt: 30 } }).sort({ name: 1 })&#10;&#10;Ctrl/Cmd+Enter runs the selection, or the block around the cursor (blocks are separated by a blank line).&#10;Tab accepts a suggestion, Ctrl+Space shows suggestions."></textarea>
+        placeholder="Pick a connection on the left, then write a query.&#10;&#10;SQL:       select * from users limit 10;&#10;MongoDB:   db.users.find({ age: { $gt: 30 } }).sort({ name: 1 })&#10;Redis:     GET session:42&#10;&#10;Ctrl/Cmd+Enter runs the selection, or the block around the cursor (blocks are separated by a blank line).&#10;Tab accepts a suggestion, Ctrl+Space shows suggestions."></textarea>
     </div>
 
     <div id="splitter" title="Drag to resize"></div>
@@ -48,6 +50,13 @@
       <div class="results-head">
         <div id="resultTabs" role="tablist"></div>
         <span class="spacer"></span>
+        <div id="editBar" hidden>
+          <button id="editAdd" title="Add a row">+ Row</button>
+          <button id="editDelete" title="Delete the selected row (Delete key)">− Row</button>
+          <button id="editNull" title="Set the selected cell to NULL">NULL</button>
+          <button id="editRevert" title="Throw away the changes">Revert</button>
+          <button id="editSubmit" class="primary" title="Save the changes in one go">Submit</button>
+        </div>
         <div id="viewToggle" hidden>
           <button data-view="grid" class="on">Grid</button><button data-view="json">JSON</button>
         </div>
@@ -64,7 +73,7 @@
       <h2 id="connTitle">New connection</h2>
       <label>Name <input name="name" required placeholder="local-postgres"></label>
       <label>URL <input name="url" required placeholder="postgres://user:pass@localhost:5432/app"></label>
-      <p class="hint">postgres://user:pass@host:5432/db or mongodb://user:pass@host:27017/db. Saved in plain text in your config folder (file mode 0600).</p>
+      <p class="hint" id="connHint">postgres://, mongodb://, mysql://, sqlserver://, redis:// or sqlite:///path/to/file.db. Saved in plain text in your config folder (file mode 0600).</p>
       <label class="check"><input type="checkbox" name="readOnly"> Read-only (refuse writes, also for MCP)</label>
       <div id="connStatus" class="status"></div>
       <div class="dialog-actions">
@@ -79,23 +88,28 @@
 
   <dialog id="copyDialog">
     <form id="copyForm">
-      <div class="dialog-head"><h2>Copy database</h2><button type="button" class="icon-btn" data-close>×</button></div>
-      <p class="hint">From <b id="copySource"></b> into another connection of the same kind.</p>
-      <label>Into <select name="target" required></select></label>
+      <div class="dialog-head"><h2>Dump / Import</h2><button type="button" class="icon-btn" data-close>×</button></div>
+      <div class="segmented" id="copyActions">
+        <button type="button" data-action="dump" class="on">Dump to file</button><button type="button" data-action="import">Import file</button><button type="button" data-action="copy">Copy to connection</button>
+      </div>
+      <p class="hint" id="copyIntro"></p>
+      <label id="copyTargetRow">Into <select name="target"></select></label>
       <p class="hint" id="copyNoTarget" hidden>No other writable connection of this kind. Add your local database with + first, e.g. postgres://postgres:pass@localhost:5432/app (the database is created if it does not exist).</p>
+      <label id="copyFileRow">File <input type="file" name="file" accept=".dump,.sql,.gz,.backup"></label>
       <fieldset class="modes">
-        <label class="check"><input type="radio" name="mode" value="all" checked> Everything: schema and data, replaces matching objects in the target</label>
-        <label class="check"><input type="radio" name="mode" value="schema"> Schema only: tables, indexes, functions, no rows</label>
-        <label class="check"><input type="radio" name="mode" value="data"> Data only: replaces the rows of tables that already exist in the target</label>
+        <label class="check"><input type="radio" name="mode" value="all" checked> <span>Everything: schema and data</span></label>
+        <label class="check"><input type="radio" name="mode" value="schema"> <span>Schema only: tables, indexes, functions, no rows</span></label>
+        <label class="check"><input type="radio" name="mode" value="data"> <span>Data only: rows of the tables</span></label>
       </fieldset>
+      <p class="hint" id="copyEffect"></p>
       <label id="copySchemasRow">Schemas <input name="schemas" placeholder="all schemas, or e.g. public, mobile_data" autocomplete="off"></label>
-      <label id="copyConfirmRow" hidden>The target is not on this machine. Type its name to overwrite it <input name="confirm" autocomplete="off"></label>
+      <label id="copyConfirmRow" hidden><span id="copyConfirmText">The target is not on this machine. Type its name to overwrite it</span> <input name="confirm" autocomplete="off"></label>
       <pre id="copyLog" hidden></pre>
       <div id="copyStatus" class="status"></div>
       <div class="dialog-actions">
         <span class="spacer"></span>
         <button type="button" id="copyCancel" class="danger" hidden>Stop</button>
-        <button type="submit" class="primary" id="copyStart">Copy</button>
+        <button type="submit" class="primary" id="copyStart">Download</button>
       </div>
     </form>
   </dialog>
@@ -109,7 +123,7 @@
   <dialog id="cellDialog">
     <div class="dialog-head"><h2 id="cellTitle">Value</h2><button class="icon-btn" data-close>×</button></div>
     <pre id="cellValue"></pre>
-    <div class="dialog-actions"><span class="spacer"></span><button id="cellCopy">Copy</button></div>
+    <div class="dialog-actions"><span class="spacer"></span><button id="cellCopy">Copy</button><button id="cellApply" class="primary" hidden>Apply</button></div>
   </dialog>
 
   <div id="toast" role="status"></div>

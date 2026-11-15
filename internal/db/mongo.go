@@ -428,7 +428,11 @@ func (m *mongoDB) find(ctx context.Context, coll *mongo.Collection, call mongoCa
 	if err != nil {
 		return Result{}, err
 	}
-	return readCursor(ctx, cur, int(effective))
+	r, err := readCursor(ctx, cur, int(effective))
+	if err == nil {
+		r.Edit = mongoEditInfo(coll, r)
+	}
+	return r, err
 }
 
 func update(ctx context.Context, coll *mongo.Collection, call mongoCall) (Result, error) {

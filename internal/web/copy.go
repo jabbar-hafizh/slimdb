@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jabbar-hafizh/slimdb/internal/db"
+	"github.com/jabbar-hafizh/slimdb/internal/store"
 )
 
 // A copy can take minutes, so it runs as a job the page polls.
@@ -82,6 +83,19 @@ func (s *Server) startCopy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	job, err := s.startJob(src.Name, dst, req.Mode, func(ctx context.Context, logf func(string)) (db.CopyReport, error) {
+		return db.Copy(ctx, src, dst, opt, logf)
+	}, nil)
+	if err != nil {
+		writeError(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, s.jobView(job))
+}
+
+// startJob runs work in the background as a job the page polls. Only one job
+// may write into a target at a time. done runs after the job finishes.
+func (s *Server) startJob(source string, dst store.Conn, mode string, work func(context.Context, func(string)) (db.CopyReport, error), done func()) (*copyJob, error) {
 	// The job outlives the request, so it gets its own context.
 	ctx, cancel := context.WithCancel(context.Background())
 	s.copies.mu.Lock()
@@ -90,18 +104,20 @@ func (s *Server) startCopy(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, j := range s.copies.jobs {
 		j.mu.Lock()
-		busy := j.State == "running" && (j.Target == dst.Name)
+		busy := j.State == "running" && j.Target == dst.Name
 		j.mu.Unlock()
 		if busy {
 			s.copies.mu.Unlock()
 			cancel()
-			writeError(w, http.StatusConflict, fmt.Errorf("a copy into %q is already running", dst.Name))
-			return
+			if done != nil {
+				done()
+			}
+			return nil, fmt.Errorf("a copy or import into %q is already running", dst.Name)
 		}
 	}
 	s.copies.seq++
 	job := &copyJob{
-		ID: fmt.Sprintf("copy-%d", s.copies.seq), Source: src.Name, Target: dst.Name, Mode: req.Mode,
+		ID: fmt.Sprintf("job-%d", s.copies.seq), Source: source, Target: dst.Name, Mode: mode,
 		State: "running", Warnings: []string{}, Log: []string{}, Started: time.Now(), cancel: cancel,
 	}
 	s.copies.jobs[job.ID] = job
@@ -109,8 +125,11 @@ func (s *Server) startCopy(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		defer cancel()
-		report, err := db.Copy(ctx, src, dst, opt, job.logf)
-		// Cached drivers may hold schema the copy just replaced.
+		if done != nil {
+			defer done()
+		}
+		report, err := work(ctx, job.logf)
+		// Cached drivers may hold schema the job just replaced.
 		s.dbs.Forget(dst.ID)
 		job.mu.Lock()
 		defer job.mu.Unlock()
@@ -125,7 +144,7 @@ func (s *Server) startCopy(w http.ResponseWriter, r *http.Request) {
 			job.State = "done"
 		}
 	}()
-	writeJSON(w, http.StatusAccepted, s.jobView(job))
+	return job, nil
 }
 
 func (s *Server) getCopy(w http.ResponseWriter, r *http.Request) {

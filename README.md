@@ -1,6 +1,7 @@
 # slimdb
 
-A slim, local database client for **PostgreSQL** and **MongoDB**, with a built-in
+A slim, local database client for **PostgreSQL**, **MySQL/MariaDB**, **SQLite**,
+**SQL Server**, **MongoDB** and **Redis**, with a built-in
 **MCP server** so AI agents (Claude Code, Claude Desktop, Cursor, and others) can
 query your local databases too.
 
@@ -11,25 +12,31 @@ listens on localhost.
 
 ## Features
 
-- **Connections** for PostgreSQL and MongoDB, saved locally, with an optional read-only flag.
+- **Connections** for PostgreSQL, MySQL/MariaDB, SQLite, SQL Server, MongoDB and Redis,
+  saved locally, with an optional read-only flag.
   A name like `team/dev/app` puts the connection in a `team` folder in the sidebar.
-- **Object tree**: schemas, tables and views (Postgres) or databases and collections (MongoDB), with a filter
-- **Query console** per connection, kept between sessions, with autocomplete:
+- **Object tree**: schemas, tables and views (SQL), databases and collections (MongoDB),
+  databases and keys (Redis), with a filter
+- **Query tabs**: as many consoles as you like, each on its own connection (and MongoDB database),
+  kept between sessions, with autocomplete:
   keywords, snippets (`sel` + Tab gives `select * from` and lists tables), tables,
   columns (also after an alias, `c.`), Mongo collections, methods, fields and operators
   - Postgres: plain SQL, several statements per run, explicit transactions work
   - MongoDB: mongosh syntax, e.g. `db.users.find({ age: { $gt: 30 } }).sort({ name: 1 })`
-- **Results grid**: typed column headers, sort by column, NULLs marked, full value on double-click, JSON view for documents, copy as CSV or JSON
+- **Results grid**: typed column headers, sort by column, NULLs marked, JSON view for documents, copy as CSV or JSON
+- **Edit data in the grid**: change cells, add and delete rows, then submit them in one go
+  (one transaction on SQL databases)
 - **Describe**: columns, indexes and constraints (Postgres), inferred fields and indexes (MongoDB)
 - **Explain**, optionally with `analyze` (Postgres rolls the statement back)
 - **History** of everything run, from the UI and from AI agents
-- **Copy a database** into another connection, e.g. dev into local: everything, schema only or data only
+- **Dump and import**: dump a database to a file (it lands in your downloads folder), import a dump file,
+  or copy a database straight into another connection, e.g. dev into local
 - **MCP server**: list connections, browse objects, describe, query, explain
 
 ## Install
 
 Download a binary for macOS, Linux or Windows from
-[Releases](https://github.com/jabbar-hafizh/slimdb/releases), or build it with Go 1.25+:
+[Releases](https://github.com/jabbar-hafizh/slimdb/releases), or build it with Go 1.26+:
 
 ```sh
 go install github.com/jabbar-hafizh/slimdb/cmd/slimdb@latest
@@ -70,10 +77,17 @@ slimdb                       # opens http://127.0.0.1:7788 in your browser
 
 Click **+** to add a connection, for example:
 
-```
-postgres://postgres:secret@localhost:5432/app
-mongodb://localhost:27017/shop
-```
+| Database | URL |
+| --- | --- |
+| PostgreSQL | `postgres://postgres:secret@localhost:5432/app` |
+| MySQL / MariaDB | `mysql://root:secret@localhost:3306/app` (`mariadb://` works too) |
+| SQLite | `sqlite:///absolute/path/app.db` or `sqlite:app.db` (the file must exist) |
+| SQL Server | `sqlserver://sa:secret@localhost:1433?database=app` |
+| MongoDB | `mongodb://localhost:27017/shop` |
+| Redis | `redis://:secret@localhost:6379/0` (`rediss://` for TLS) |
+
+With Docker, a SQLite file has to be mounted into the container, e.g.
+`-v ~/data:/sqlite`, then use `sqlite:///sqlite/app.db`.
 
 Or add connections from the terminal:
 
@@ -95,15 +109,45 @@ slimdb conn list
 | Up/Down, then Enter | Pick another suggestion |
 | Click a table | Describe it |
 | Double-click a table | Query its first 100 rows |
-| Double-click a cell | Show the full value |
+| Double-click a cell | Edit it (editable results) or show the full value |
+| Tab / Shift+Tab while editing | Save the cell and edit the next one |
+| Delete | Mark the selected row for deletion |
 
 Results are capped by the **Limit** selector (default 500). Postgres SELECTs run
 through a cursor, so a query on a huge table only fetches what is shown.
 
-### Copying a database
+### Editing data
 
-Pick a connection, click **Copy to…** and choose another connection of the same kind,
-for example from the shared dev database into the one on your machine:
+A result is editable when its rows come from one table and include the table's
+primary key (for MongoDB: documents from `find` with their `_id`). The status line
+then says *editable*. Double-click a cell to change it, use **+ Row**, **− Row** and
+**NULL**, and **Submit** to save. Changes stay pending (highlighted) until you
+submit, and **Revert** drops them.
+
+- SQL databases save all changes in one transaction. An update or delete that would
+  hit more or less than exactly one row fails, and nothing is saved.
+- MongoDB values are typed as JSON: `42`, `true`, `["a", "b"]`, `{"$date": "2026-01-01T00:00:00Z"}`.
+  Text fields are edited without quotes. MongoDB has no transactions on a single
+  server, so changes run in order and stop at the first failure.
+- Read-only connections never show the edit buttons.
+
+### Query tabs
+
+Click a connection to open its tab, or **+** next to the tabs for another one on the
+same connection. Each tab keeps its own editor text, database and results, so you
+can keep a few queries side by side. Middle-click or **×** closes a tab.
+
+### Dump, import and copy
+
+Pick a connection and click **Dump / Import…**:
+
+- **Dump to file** downloads the database into your browser's download folder:
+  a pg_dump custom-format `.dump` for Postgres (`pg_restore` reads it too), a
+  `.mongo.gz` for MongoDB.
+- **Import file** loads such a file into the selected connection. For Postgres a
+  plain `.sql` file works too; it runs as it is.
+- **Copy to connection** copies straight into another connection of the same kind,
+  for example from the shared dev database into the one on your machine.
 
 | Mode | What it does |
 | --- | --- |
@@ -118,13 +162,23 @@ for example from the shared dev database into the one on your machine:
   reported as warnings and the copy goes on.
 - A read-only connection is never a target. A target that is not on your machine
   must be confirmed by typing its name.
+- Dump, import and copy work for Postgres and MongoDB.
 
 From the terminal:
 
 ```sh
+slimdb dump dev/app                                       # writes dev-app-<date>.dump here
+slimdb import dev-app-20261115-1304.dump local/app
 slimdb copy dev/app local/app                             # everything
 slimdb copy -mode data -schema public dev/app local/app   # rows of the public schema
 ```
+
+### Redis
+
+One command per line, quoted like a shell: `HGETALL user:42`, `SET greeting "hello world"`.
+Pick the database (`db0`, `db1`, …) in the selector next to the connection name or by
+clicking it in the tree; double-clicking a key reads it with the command for its
+type. Redis results are not editable in the grid; use commands.
 
 ### MongoDB syntax
 
@@ -206,9 +260,10 @@ stored in plain text in `connections.json` with file mode 0600.
   DNS-rebinding attacks, and every API call needs a random token issued per run,
   which blocks other websites from calling the API (CSRF).
 - `slimdb serve` refuses to listen on a non-loopback address.
-- The read-only flag sets `default_transaction_read_only` on Postgres and refuses
-  write methods on MongoDB. It guards against mistakes; it is not a security
-  boundary.
+- The read-only flag sets `default_transaction_read_only` on Postgres, a read-only
+  session on MySQL, read-only mode on SQLite, and refuses writing statements on
+  SQL Server, write methods on MongoDB and write commands on Redis. It guards
+  against mistakes; it is not a security boundary.
 
 ## Development
 
@@ -218,9 +273,15 @@ go test ./...                                   # unit tests
 # integration tests need real databases
 docker run -d --name pg -e POSTGRES_PASSWORD=pass -p 5432:5432 postgres:17
 docker run -d --name mongo -p 27017:27017 mongo:7
+docker run -d --name mysql -e MYSQL_ROOT_PASSWORD=pass -e MYSQL_DATABASE=shop -p 3306:3306 mysql:8.4
+docker run -d --name redis -p 6379:6379 redis:7
 SLIMDB_TEST_POSTGRES_URL=postgres://postgres:pass@localhost:5432/postgres \
 SLIMDB_TEST_MONGO_URL=mongodb://localhost:27017 \
+SLIMDB_TEST_MYSQL_URL=mysql://root:pass@localhost:3306/shop \
+SLIMDB_TEST_REDIS_URL=redis://localhost:6379/0 \
+SLIMDB_TEST_SQLITE=1 \
 go test ./...
+# SQL Server: SLIMDB_TEST_SQLSERVER_URL=sqlserver://sa:Pass_word1@localhost:1433
 
 go run ./cmd/slimdb                             # run from source
 ```
@@ -228,9 +289,10 @@ go run ./cmd/slimdb                             # run from source
 Layout:
 
 ```
-cmd/slimdb          CLI: serve, mcp, conn, copy
+cmd/slimdb          CLI: serve, mcp, conn, copy, dump, import
 internal/store      saved connections and history on disk
-internal/db         Driver interface, Postgres and MongoDB drivers, SQL splitter, mongosh parser
+internal/db         Driver interface, one driver per database, grid edits, dump/import/copy,
+                    SQL splitter, mongosh parser
 internal/web        HTTP API and the embedded UI (plain HTML, CSS and JS, no build step)
 internal/mcpserver  MCP tools
 ```

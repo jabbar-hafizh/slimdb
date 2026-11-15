@@ -52,3 +52,17 @@ func TestFirstKeyword(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitSQLDialects(t *testing.T) {
+	my := splitSQL("select `a;b`, 'it\\'s; x', \"q\\\";\" from t # ; comment\n; select 2", splitOpts{mysql: true})
+	if len(my) != 2 || my[1] != "select 2" {
+		t.Errorf("mysql split = %q", my)
+	}
+	ms := splitSQL("select [a;b] from [t]]x;]; select 2", splitOpts{brackets: true})
+	if !reflect.DeepEqual(ms, []string{"select [a;b] from [t]]x;]", "select 2"}) {
+		t.Errorf("tsql split = %q", ms)
+	}
+	if got := splitTSQL("select 1\nGO\nselect 2\n go \nselect 3; select 4"); len(got) != 4 {
+		t.Errorf("GO split = %q", got)
+	}
+}

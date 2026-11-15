@@ -20,8 +20,12 @@ import (
 )
 
 const (
-	KindPostgres = "postgres"
-	KindMongo    = "mongo"
+	KindPostgres  = "postgres"
+	KindMongo     = "mongo"
+	KindMySQL     = "mysql" // MySQL and MariaDB
+	KindSQLite    = "sqlite"
+	KindSQLServer = "sqlserver"
+	KindRedis     = "redis"
 
 	historyKeep = 500
 	historyTrim = 2000 // trim the file back to historyKeep once it grows past this
@@ -81,8 +85,16 @@ func KindFromURL(url string) (string, error) {
 		return KindPostgres, nil
 	case strings.HasPrefix(url, "mongodb://"), strings.HasPrefix(url, "mongodb+srv://"):
 		return KindMongo, nil
+	case strings.HasPrefix(url, "mysql://"), strings.HasPrefix(url, "mariadb://"):
+		return KindMySQL, nil
+	case strings.HasPrefix(url, "sqlite:"), strings.HasPrefix(url, "file:"):
+		return KindSQLite, nil
+	case strings.HasPrefix(url, "sqlserver://"):
+		return KindSQLServer, nil
+	case strings.HasPrefix(url, "redis://"), strings.HasPrefix(url, "rediss://"):
+		return KindRedis, nil
 	}
-	return "", fmt.Errorf("unsupported URL scheme, use postgres:// or mongodb://")
+	return "", fmt.Errorf("unsupported URL scheme, use postgres://, mysql://, mariadb://, sqlserver://, sqlite:, mongodb:// or redis://")
 }
 
 func (s *Store) Conns() ([]Conn, error) {

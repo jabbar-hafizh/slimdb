@@ -21,7 +21,7 @@ func TestConnLifecycle(t *testing.T) {
 	if _, err := s.Save(Conn{Name: "LOCAL", URL: "mongodb://localhost"}); err == nil {
 		t.Error("duplicate name (case-insensitive) was accepted")
 	}
-	if _, err := s.Save(Conn{Name: "x", URL: "mysql://localhost"}); err == nil {
+	if _, err := s.Save(Conn{Name: "x", URL: "oracle://localhost"}); err == nil {
 		t.Error("unsupported scheme was accepted")
 	}
 
@@ -66,5 +66,17 @@ func TestHistoryNewestFirstAndTrimmed(t *testing.T) {
 	}
 	if len(onlyB) != 3 || onlyB[0].ConnID != "b" {
 		t.Errorf("History(b) = %+v", onlyB)
+	}
+}
+
+func TestKindFromURL(t *testing.T) {
+	for url, want := range map[string]string{
+		"postgresql://h/db": KindPostgres, "mysql://h/db": KindMySQL, "mariadb://h/db": KindMySQL,
+		"sqlite:///tmp/a.db": KindSQLite, "file:a.db": KindSQLite, "sqlserver://h": KindSQLServer,
+		"mongodb+srv://h": KindMongo, "redis://h": KindRedis, "rediss://h": KindRedis,
+	} {
+		if got, err := KindFromURL(url); err != nil || got != want {
+			t.Errorf("KindFromURL(%q) = %q, %v", url, got, err)
+		}
 	}
 }

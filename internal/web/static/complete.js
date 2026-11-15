@@ -256,7 +256,8 @@ const completer = (() => {
     if (!force && /^\d/.test(word)) return close();
     // Not inside a string literal.
     const line = before.slice(before.lastIndexOf('\n') + 1);
-    if (state.active.kind === 'postgres' && (line.split("'").length - 1) % 2 === 1) return close();
+    if (state.active.kind === 'redis') return close(); // commands, nothing to complete yet
+    if (state.active.kind !== 'mongo' && (line.split("'").length - 1) % 2 === 1) return close();
 
     const ticket = ++reqSeq;
     const list = state.active.kind === 'mongo' ? await mongoSuggestions(word) : await sqlSuggestions(word, pos);

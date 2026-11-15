@@ -100,9 +100,14 @@ button.danger { color: var(--danger); }
 .node:hover .edit { opacity: 1; }
 .node.conn { font-weight: 600; padding-top: 4px; padding-bottom: 4px; }
 .node.folder { font-weight: 600; color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; padding-top: 6px; }
-.kind-icon { width: 14px; height: 14px; flex: none; border-radius: 3px; font-size: 9px; line-height: 14px; text-align: center; font-weight: 700; color: #fff; }
+.kind-icon { min-width: 14px; padding: 0 2px; height: 14px; flex: none; border-radius: 3px; font-size: 9px; line-height: 14px; text-align: center; font-weight: 700; color: #fff; }
 .k-postgres { background: #336791; }
 .k-mongo { background: #13aa52; }
+.k-mysql { background: #00758f; }
+.k-sqlite { background: #0f80cc; }
+.k-sqlserver { background: #a91d22; }
+.k-redis { background: #d82c20; }
+.k-key, .k-string, .k-hash, .k-list, .k-set, .k-zset, .k-stream { background: #b0853a; }
 .k-table { background: #4a7bb7; }
 .k-view, .k-matview { background: #8d6bbf; }
 .k-collection { background: #3d9a63; }
@@ -349,3 +354,74 @@ fieldset.modes input { margin: 2px 0 0; flex: none; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ---------- query tabs ---------- */
+#qtabs {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  min-height: 30px;
+}
+.qtab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 10px;
+  max-width: 260px;
+  cursor: pointer;
+  color: var(--muted);
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+}
+.qtab .label { overflow: hidden; text-overflow: ellipsis; }
+.qtab:hover { color: var(--text); }
+.qtab.on { color: var(--text); background: var(--bg); box-shadow: inset 0 -2px var(--accent); }
+.qtab .close { border: none; background: none; padding: 0 5px; color: var(--muted); visibility: hidden; }
+.qtab:hover .close, .qtab.on .close { visibility: visible; }
+.qtab .close:hover { color: var(--text); }
+.qtab .spin { color: var(--accent); font-size: 9px; animation: pulse 1s infinite alternate; }
+@keyframes pulse { from { opacity: .3; } to { opacity: 1; } }
+.qtab-add { border: none; background: none; padding: 0 12px; color: var(--muted); font-size: 16px; }
+.qtab-add:hover:not(:disabled) { color: var(--text); }
+
+/* ---------- editing results ---------- */
+#editBar { display: flex; gap: 4px; margin-right: 8px; }
+#editBar button { padding: 1px 8px; }
+.grid td.dirty { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.grid tr.deleted td:not(.rownum) { text-decoration: line-through; color: var(--danger); opacity: .7; }
+.grid tr.inserted td:not(.rownum) { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.grid td.editing { padding: 0; }
+.cell-input {
+  width: 100%;
+  min-width: 80px;
+  border: none;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--bg);
+  padding: 3px 6px;
+  font: inherit;
+}
+.cell-area {
+  width: 100%;
+  min-height: 260px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  font: 12px/1.5 var(--mono);
+  color: var(--text);
+  resize: vertical;
+}
+.hint-inline { color: var(--muted); }
+#resultMeta .err { color: var(--danger); }
+
+/* ---------- dump / import dialog ---------- */
+.segmented { display: inline-flex; margin: 4px 0 12px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented button { border: none; border-radius: 0; background: none; padding: 4px 12px; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.on { background: var(--accent); color: var(--accent-text); }
+dialog label input[type=file] { padding: 4px 0; border: none; background: none; }

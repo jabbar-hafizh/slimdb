@@ -51,6 +51,8 @@ func CheckCopy(src, dst store.Conn, opt CopyOptions) error {
 		return errors.New("source and target are the same connection")
 	case src.Kind != dst.Kind:
 		return fmt.Errorf("cannot copy %s into %s", src.Kind, dst.Kind)
+	case src.Kind != store.KindPostgres && src.Kind != store.KindMongo:
+		return fmt.Errorf("copying is only available for Postgres and MongoDB, not %s", src.Kind)
 	case dst.ReadOnly:
 		return fmt.Errorf("target %q is read-only", dst.Name)
 	}

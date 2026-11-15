@@ -40,6 +40,10 @@ Usage:
   slimdb conn rm <name>                               delete a connection
   slimdb copy [-mode all|schema|data] [-schema a,b] [-yes] <source> <target>
                                                       copy a database into another connection
+  slimdb dump [-mode all|schema|data] [-schema a,b] <conn> [file]
+                                                      dump a database to a file (default: a dated name here)
+  slimdb import [-mode all|schema|data] [-schema a,b] [-yes] <file> <conn>
+                                                      load a dump file into a connection
   slimdb version
 
 Connections and history are stored in %s
@@ -77,6 +81,10 @@ func main() {
 		err = connCmd(st, args)
 	case "copy":
 		err = copyCmd(ctx, st, args)
+	case "dump":
+		err = dumpCmd(ctx, st, args)
+	case "import":
+		err = importCmd(ctx, st, args)
 	case "version", "-v", "--version":
 		fmt.Println(version)
 	case "help", "-h", "--help":
@@ -228,6 +236,79 @@ func copyCmd(ctx context.Context, st *store.Store, args []string) error {
 		return err
 	}
 	fmt.Printf("copied %s into %s (%s) in %s, %d warnings\n", src.Name, dst.Name, *mode, time.Since(start).Round(time.Second), len(report.Warnings))
+	for _, w := range report.Warnings {
+		fmt.Println("  " + w)
+	}
+	return nil
+}
+
+func dumpCmd(ctx context.Context, st *store.Store, args []string) error {
+	fs := flag.NewFlagSet("dump", flag.ExitOnError)
+	mode := fs.String("mode", db.CopyAll, "all (schema and data), schema, or data")
+	schemas := fs.String("schema", "", "Postgres only: comma-separated schemas to dump (default all)")
+	_ = fs.Parse(args)
+	if fs.NArg() < 1 || fs.NArg() > 2 {
+		return errors.New("usage: slimdb dump [-mode all|schema|data] [-schema a,b] <conn> [file]")
+	}
+	c, err := st.Conn(fs.Arg(0))
+	if err != nil {
+		return fmt.Errorf("%q: %w", fs.Arg(0), err)
+	}
+	opt := db.CopyOptions{Mode: *mode}
+	if *schemas != "" {
+		opt.Schemas = strings.Split(*schemas, ",")
+	}
+	if err := db.CheckDump(c, opt); err != nil {
+		return err
+	}
+	path := fs.Arg(1)
+	if path == "" {
+		path = db.DumpFileName(c, *mode, time.Now())
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	start := time.Now()
+	err = db.Dump(ctx, c, opt, f, func(line string) { fmt.Fprintln(os.Stderr, line) })
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(path)
+		return err
+	}
+	info, _ := os.Stat(path)
+	fmt.Printf("dumped %s (%s) into %s, %d bytes in %s\n", c.Name, *mode, path, info.Size(), time.Since(start).Round(time.Second))
+	return nil
+}
+
+func importCmd(ctx context.Context, st *store.Store, args []string) error {
+	fs := flag.NewFlagSet("import", flag.ExitOnError)
+	mode := fs.String("mode", db.CopyAll, "all (replaces the objects in the file), schema, or data (rows into existing tables)")
+	schemas := fs.String("schema", "", "Postgres custom-format dumps only: comma-separated schemas to load (default all)")
+	yes := fs.Bool("yes", false, "allow a target that is not on this machine")
+	_ = fs.Parse(args)
+	if fs.NArg() != 2 {
+		return errors.New("usage: slimdb import [-mode all|schema|data] [-schema a,b] [-yes] <file> <conn>")
+	}
+	c, err := st.Conn(fs.Arg(1))
+	if err != nil {
+		return fmt.Errorf("%q: %w", fs.Arg(1), err)
+	}
+	if !db.IsLocalTarget(c) && !*yes {
+		return fmt.Errorf("%q is not on this machine; pass -yes to overwrite it anyway", c.Name)
+	}
+	opt := db.CopyOptions{Mode: *mode}
+	if *schemas != "" {
+		opt.Schemas = strings.Split(*schemas, ",")
+	}
+	start := time.Now()
+	report, err := db.Restore(ctx, c, opt, fs.Arg(0), func(line string) { fmt.Fprintln(os.Stderr, line) })
+	if err != nil {
+		return err
+	}
+	fmt.Printf("imported %s into %s (%s) in %s, %d warnings\n", fs.Arg(0), c.Name, *mode, time.Since(start).Round(time.Second), len(report.Warnings))
 	for _, w := range report.Warnings {
 		fmt.Println("  " + w)
 	}

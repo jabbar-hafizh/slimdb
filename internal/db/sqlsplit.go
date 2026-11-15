@@ -8,7 +8,15 @@ import (
 // SplitSQL splits a script into statements on top-level semicolons. It skips
 // semicolons inside quotes, quoted identifiers, dollar-quoted bodies and
 // comments, and drops statements that hold only comments or whitespace.
-func SplitSQL(script string) []string {
+func SplitSQL(script string) []string { return splitSQL(script, splitOpts{}) }
+
+// splitOpts covers the quoting rules of databases other than Postgres.
+type splitOpts struct {
+	mysql    bool // backtick identifiers, backslash escapes in strings, # comments
+	brackets bool // T-SQL [identifiers]
+}
+
+func splitSQL(script string, o splitOpts) []string {
 	var out []string
 	s := []rune(script)
 	start := 0
@@ -24,20 +32,26 @@ func SplitSQL(script string) []string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
-		case c == '-' && at(s, i+1) == '-':
+		case c == '-' && at(s, i+1) == '-', o.mysql && c == '#':
 			for i < len(s) && s[i] != '\n' {
 				i++
 			}
 		case c == '/' && at(s, i+1) == '*':
 			i = skipBlockComment(s, i)
 		case c == '\'':
-			escapes := i > 0 && (s[i-1] == 'E' || s[i-1] == 'e') && !isIdentRune(at(s, i-2))
+			escapes := o.mysql || i > 0 && (s[i-1] == 'E' || s[i-1] == 'e') && !isIdentRune(at(s, i-2))
 			i = skipQuoted(s, i, '\'', escapes)
 			hasCode = true
 		case c == '"':
-			i = skipQuoted(s, i, '"', false)
+			i = skipQuoted(s, i, '"', o.mysql)
 			hasCode = true
-		case c == '$':
+		case o.mysql && c == '`':
+			i = skipQuoted(s, i, '`', false)
+			hasCode = true
+		case o.brackets && c == '[':
+			i = skipQuoted(s, i, ']', false)
+			hasCode = true
+		case !o.mysql && !o.brackets && c == '$':
 			if tag, ok := dollarTag(s, i); ok {
 				i = skipDollarBody(s, i, tag)
 			}

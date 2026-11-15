@@ -170,8 +170,109 @@ func runStatement(ctx context.Context, c *pgx.Conn, stmt string, limit int) Resu
 	r.Millis = time.Since(start).Milliseconds()
 	if err != nil {
 		r.Error = err.Error()
+	} else if c.PgConn().TxStatus() == 'I' {
+		// Outside a user transaction only: a failed lookup must not abort it.
+		r.Edit = pgEditInfo(ctx, c, r.Columns, r.src)
 	}
 	return r
+}
+
+// pgEditInfo makes a result editable when every column comes straight from
+// one table and the table's primary key is among them. Postgres reports the
+// source table and column of each result column, so aliases are fine.
+func pgEditInfo(ctx context.Context, c *pgx.Conn, cols []Column, src []columnSource) *EditInfo {
+	if len(src) == 0 || len(src) != len(cols) {
+		return nil
+	}
+	table := src[0].table
+	for _, s := range src {
+		if s.table != table && s.table != 0 {
+			return nil // more than one table
+		}
+	}
+	if table == 0 {
+		return nil
+	}
+	var object string
+	var kind string
+	var names []string
+	var nums []int16
+	var pk []int16
+	err := c.QueryRow(ctx, `
+		select format('%I.%I', n.nspname, t.relname), t.relkind::text,
+			array(select attname::text from pg_attribute where attrelid = t.oid and attnum > 0 and not attisdropped order by attnum),
+			array(select attnum from pg_attribute where attrelid = t.oid and attnum > 0 and not attisdropped order by attnum),
+			coalesce((select i.indkey::int2[] from pg_index i where i.indrelid = t.oid and i.indisprimary), '{}')
+		from pg_class t join pg_namespace n on n.oid = t.relnamespace
+		where t.oid = $1`, table).Scan(&object, &kind, &names, &nums, &pk)
+	if err != nil || (kind != "r" && kind != "p") || len(pk) == 0 {
+		return nil
+	}
+	byNum := map[int16]string{}
+	for i, n := range nums {
+		byNum[n] = names[i]
+	}
+	info := &EditInfo{Object: object, Columns: make([]string, len(cols))}
+	seen := map[string]bool{}
+	for i, s := range src {
+		name := ""
+		if s.table == table {
+			name = byNum[int16(s.attr)]
+		}
+		if name != "" && seen[name] {
+			name = ""
+		}
+		seen[name] = true
+		info.Columns[i] = name
+	}
+	for _, n := range pk {
+		name := byNum[n]
+		if !seen[name] || name == "" {
+			return nil
+		}
+		info.Key = append(info.Key, name)
+	}
+	return info
+}
+
+// Apply writes grid edits in one transaction. Values travel as text and
+// the simple protocol sends them as untyped literals, so Postgres casts them
+// to each column's type the same way it would cast '42' in SQL.
+func (p *postgres) Apply(ctx context.Context, _ string, c Changes) (Result, error) {
+	start := time.Now()
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after commit
+	var object, kind string
+	err = tx.QueryRow(ctx, `select format('%I.%I', n.nspname, t.relname), t.relkind::text
+		from pg_class t join pg_namespace n on n.oid = t.relnamespace where t.oid = to_regclass($1)`, c.Object).Scan(&object, &kind)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && kind != "r" && kind != "p") {
+		return Result{}, fmt.Errorf("table %s not found", c.Object)
+	}
+	if err != nil {
+		return Result{}, err
+	}
+	var total int64
+	for i, op := range c.Ops {
+		sql, args, err := buildEdit(dialectPostgres, object, op)
+		if err != nil {
+			return Result{}, fmt.Errorf("change %d: %w", i+1, err)
+		}
+		tag, err := tx.Exec(ctx, sql, args...)
+		if err != nil {
+			return Result{}, fmt.Errorf("change %d (%s): %w", i+1, op.Op, err)
+		}
+		if err := checkAffected(i, op, tag.RowsAffected()); err != nil {
+			return Result{}, err
+		}
+		total += tag.RowsAffected()
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Result{}, err
+	}
+	return Result{Message: editSummary(c), Affected: total, Millis: time.Since(start).Milliseconds()}, nil
 }
 
 // runWithCursor fetches only limit+1 rows of a query, so a SELECT on a huge
@@ -234,6 +335,7 @@ func readRows(ctx context.Context, q querier, sql string, limit int, r *Result, 
 			typ = t.Name
 		}
 		r.Columns = append(r.Columns, Column{Name: f.Name, Type: typ})
+		r.src = append(r.src, columnSource{table: f.TableOID, attr: f.TableAttributeNumber})
 	}
 	r.Rows = [][]any{}
 	for rows.Next() {
