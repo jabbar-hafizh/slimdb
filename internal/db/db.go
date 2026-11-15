@@ -1,5 +1,5 @@
 // Package db holds the database drivers behind one small interface, so the
-// web UI and the MCP server treat Postgres and MongoDB the same way.
+// web UI and the MCP server treat every database the same way.
 package db
 
 import (

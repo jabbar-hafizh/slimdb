@@ -1,5 +1,6 @@
-// Command slimdb is a small local database client for PostgreSQL and MongoDB,
-// with a browser UI and an MCP server for AI agents.
+// Command slimdb is a small local database client for PostgreSQL, MySQL,
+// SQLite, SQL Server, MongoDB and Redis, with a browser UI and an MCP server
+// for AI agents.
 package main
 
 import (
@@ -29,7 +30,7 @@ import (
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
-const usage = `slimdb: a slim database client for PostgreSQL and MongoDB
+const usage = `slimdb: a slim database client for PostgreSQL, MySQL, SQLite, SQL Server, MongoDB and Redis
 
 Usage:
   slimdb [serve] [-addr 127.0.0.1:7788] [-no-browser]   start the web UI
