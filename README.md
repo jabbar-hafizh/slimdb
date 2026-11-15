@@ -23,6 +23,7 @@ listens on localhost.
 - **Describe**: columns, indexes and constraints (Postgres), inferred fields and indexes (MongoDB)
 - **Explain**, optionally with `analyze` (Postgres rolls the statement back)
 - **History** of everything run, from the UI and from AI agents
+- **Copy a database** into another connection, e.g. dev into local: everything, schema only or data only
 - **MCP server**: list connections, browse objects, describe, query, explain
 
 ## Install
@@ -33,6 +34,12 @@ Download a binary for macOS, Linux or Windows from
 ```sh
 go install github.com/jabbar-hafizh/slimdb/cmd/slimdb@latest
 ```
+
+- macOS may block a downloaded binary because it is not signed. Allow it once with
+  `xattr -d com.apple.quarantine ./slimdb`.
+- Copying a Postgres database runs `pg_dump` and `pg_restore`, so the binary needs the
+  PostgreSQL client tools on `PATH` (`brew install libpq && brew link --force libpq`
+  on macOS, `postgresql-client` on Debian/Ubuntu). The Docker image already has them.
 
 ### Docker
 
@@ -92,6 +99,32 @@ slimdb conn list
 
 Results are capped by the **Limit** selector (default 500). Postgres SELECTs run
 through a cursor, so a query on a huge table only fetches what is shown.
+
+### Copying a database
+
+Pick a connection, click **Copy to…** and choose another connection of the same kind,
+for example from the shared dev database into the one on your machine:
+
+| Mode | What it does |
+| --- | --- |
+| Everything (default) | Schema and data. Matching tables are dropped and recreated in the target. |
+| Schema only | Tables, indexes, functions and so on, no rows |
+| Data only | Empties the tables that already exist in the target, then copies the rows |
+
+- Postgres goes through `pg_dump | pg_restore` (owners and grants are left out). A missing
+  target database is created. Limit the copy to some schemas with the Schemas field.
+- MongoDB collections are copied with their indexes. Views are skipped.
+- Statements the target cannot run, such as an extension it does not have, are
+  reported as warnings and the copy goes on.
+- A read-only connection is never a target. A target that is not on your machine
+  must be confirmed by typing its name.
+
+From the terminal:
+
+```sh
+slimdb copy dev/app local/app                             # everything
+slimdb copy -mode data -schema public dev/app local/app   # rows of the public schema
+```
 
 ### MongoDB syntax
 
@@ -195,7 +228,7 @@ go run ./cmd/slimdb                             # run from source
 Layout:
 
 ```
-cmd/slimdb          CLI: serve, mcp, conn
+cmd/slimdb          CLI: serve, mcp, conn, copy
 internal/store      saved connections and history on disk
 internal/db         Driver interface, Postgres and MongoDB drivers, SQL splitter, mongosh parser
 internal/web        HTTP API and the embedded UI (plain HTML, CSS and JS, no build step)

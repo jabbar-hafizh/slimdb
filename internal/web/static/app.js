@@ -101,7 +101,7 @@ function setActive(conn) {
   state.active = conn;
   $('#activeConn').textContent = conn ? conn.name : 'No connection selected';
   $('#activeConn').title = conn ? `${conn.kind}${conn.readOnly ? ', read-only' : ''}` : '';
-  for (const b of ['#runBtn', '#runAllBtn', '#explainBtn', '#historyBtn']) $(b).disabled = !conn;
+  for (const b of ['#runBtn', '#runAllBtn', '#explainBtn', '#historyBtn', '#copyBtn']) $(b).disabled = !conn;
   dbSelect.hidden = !conn || conn.kind !== 'mongo';
 }
 
@@ -631,6 +631,134 @@ $('#connDelete').addEventListener('click', async () => {
   }
   connDialog.close();
   await loadConnections();
+});
+
+// ---------- copy a database ----------
+
+const copyForm = $('#copyForm');
+let copyJob = null; // id of the job the dialog shows
+let copyTimer = null;
+
+function isLocalURL(u) {
+  const m = /^[a-z+]+:\/\/(?:[^@/]*@)?([^/?]*)/i.exec(u || '');
+  const hosts = m && m[1] ? m[1].split(',') : ['localhost'];
+  return hosts.every((h) => /^(localhost|127(\.\d+){3}|\[::1\]|host\.docker\.internal)(:\d+)?$/i.test(h));
+}
+
+function copyTarget() {
+  return state.conns.find((c) => c.id === copyForm.target.value);
+}
+
+function updateCopyForm() {
+  const t = copyTarget();
+  const remote = t && !isLocalURL(t.url);
+  $('#copyConfirmRow').hidden = !remote;
+  if (remote) copyForm.confirm.placeholder = t.name;
+}
+
+function setCopyRunning(on) {
+  $('#copyCancel').hidden = !on;
+  $('#copyStart').disabled = on;
+  for (const f of copyForm.querySelectorAll('select, input')) f.disabled = on;
+}
+
+$('#copyBtn').addEventListener('click', () => {
+  const src = state.active;
+  if (!src) return;
+  if (copyJob && copyTimer) { $('#copyDialog').showModal(); return; } // a copy is still running
+  $('#copySource').textContent = src.name;
+  const targets = state.conns.filter((c) => c.kind === src.kind && c.id !== src.id && !c.readOnly);
+  // Local connections first: copying dev into local is the usual case.
+  targets.sort((a, b) => isLocalURL(b.url) - isLocalURL(a.url));
+  copyForm.target.replaceChildren(...targets.map((c) => el('option', { value: c.id },
+    c.name + (isLocalURL(c.url) ? '  (local)' : ''))));
+  $('#copyNoTarget').hidden = targets.length > 0;
+  $('#copyStart').disabled = targets.length === 0;
+  $('#copySchemasRow').hidden = src.kind !== 'postgres';
+  copyForm.confirm.value = '';
+  $('#copyLog').hidden = true;
+  $('#copyLog').textContent = '';
+  setCopyStatus('');
+  copyJob = null;
+  setCopyRunning(false);
+  $('#copyStart').disabled = targets.length === 0;
+  updateCopyForm();
+  $('#copyDialog').showModal();
+});
+
+copyForm.target.addEventListener('change', updateCopyForm);
+
+function setCopyStatus(text, kind) {
+  const s = $('#copyStatus');
+  s.textContent = text;
+  s.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+copyForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const t = copyTarget();
+  if (!state.active || !t) return;
+  const mode = copyForm.mode.value;
+  const what = { all: 'everything', schema: 'the schema', data: 'the data' }[mode];
+  const objs = t.kind === 'mongo' ? 'collections' : 'tables';
+  const effect = mode === 'data' ? `Rows of matching ${objs} in ${t.name} are deleted first.` : `Matching ${objs} in ${t.name} are dropped and recreated.`;
+  if (!confirm(`Copy ${what} of ${state.active.name} into ${t.name}? ${effect}`)) return;
+  try {
+    const job = await api('/api/copy', {
+      method: 'POST',
+      body: {
+        source: state.active.id, target: t.id, mode,
+        schemas: copyForm.schemas.value.split(',').map((s) => s.trim()).filter(Boolean),
+        confirm: copyForm.confirm.value,
+      },
+    });
+    copyJob = job.id;
+    setCopyRunning(true);
+    $('#copyLog').hidden = false;
+    showCopy(job);
+    copyTimer = setInterval(pollCopy, 1000);
+  } catch (err) {
+    setCopyStatus(err.message, 'err');
+  }
+});
+
+async function pollCopy() {
+  if (!copyJob) return;
+  try {
+    showCopy(await api(`/api/copy/${copyJob}`));
+  } catch (err) {
+    setCopyStatus(err.message, 'err');
+  }
+}
+
+function showCopy(job) {
+  const log = $('#copyLog');
+  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+  log.textContent = (job.dropped ? `… ${job.dropped} earlier lines\n` : '') + job.log.join('\n');
+  if (atBottom) log.scrollTop = log.scrollHeight;
+  const secs = Math.round(((job.finished && !job.finished.startsWith('0001') ? new Date(job.finished) : new Date()) - new Date(job.started)) / 1000);
+  const warn = job.warnings.length ? `, ${job.warnings.length} warning(s), see the log` : '';
+  if (job.state === 'running') {
+    setCopyStatus(`Copying… ${secs}s`);
+    return;
+  }
+  clearInterval(copyTimer);
+  copyTimer = null;
+  setCopyRunning(false);
+  if (job.state === 'done') {
+    setCopyStatus(`Done in ${secs}s${warn}.`, 'ok');
+    const t = state.conns.find((c) => c.name === job.target);
+    if (t) delete state.trees[t.id];
+    renderTree();
+  } else if (job.state === 'cancelled') {
+    setCopyStatus('Stopped. The target may be half copied.', 'err');
+  } else {
+    setCopyStatus(job.error, 'err');
+  }
+}
+
+$('#copyCancel').addEventListener('click', () => {
+  if (copyJob) api(`/api/copy/${copyJob}/cancel`, { method: 'POST' }).catch(() => {});
 });
 
 // ---------- history ----------

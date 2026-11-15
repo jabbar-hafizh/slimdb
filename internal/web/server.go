@@ -33,7 +33,8 @@ type Server struct {
 	// token is generated per run and embedded in the page. Requiring it on
 	// every API call stops other websites from driving the API through the
 	// browser (CSRF); the Host check below stops DNS rebinding.
-	token string
+	token  string
+	copies copyJobs
 }
 
 func New(st *store.Store, dbs *db.Manager) *Server {
@@ -57,6 +58,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/connections/{id}/query", s.query)
 	mux.HandleFunc("POST /api/connections/{id}/explain", s.explain)
 	mux.HandleFunc("GET /api/history", s.history)
+	mux.HandleFunc("POST /api/copy", s.startCopy)
+	mux.HandleFunc("GET /api/copy/{id}", s.getCopy)
+	mux.HandleFunc("POST /api/copy/{id}/cancel", s.cancelCopy)
 	return s.guard(mux)
 }
 

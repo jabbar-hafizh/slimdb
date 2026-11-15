@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -37,6 +38,8 @@ Usage:
   slimdb conn add [-read-only] <name> <url>           save a connection
   slimdb conn rename <name> <new-name>                rename a connection
   slimdb conn rm <name>                               delete a connection
+  slimdb copy [-mode all|schema|data] [-schema a,b] [-yes] <source> <target>
+                                                      copy a database into another connection
   slimdb version
 
 Connections and history are stored in %s
@@ -72,6 +75,8 @@ func main() {
 		err = mcpserver.Run(ctx, st, dbs, version)
 	case "conn":
 		err = connCmd(st, args)
+	case "copy":
+		err = copyCmd(ctx, st, args)
 	case "version", "-v", "--version":
 		fmt.Println(version)
 	case "help", "-h", "--help":
@@ -191,6 +196,42 @@ func connCmd(st *store.Store, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown conn command %q", args[0])
+}
+
+func copyCmd(ctx context.Context, st *store.Store, args []string) error {
+	fs := flag.NewFlagSet("copy", flag.ExitOnError)
+	mode := fs.String("mode", db.CopyAll, "all (schema and data, replaces the target's objects), schema, or data (rows into existing tables)")
+	schemas := fs.String("schema", "", "Postgres only: comma-separated schemas to copy (default all)")
+	yes := fs.Bool("yes", false, "allow a target that is not on this machine")
+	_ = fs.Parse(args)
+	if fs.NArg() != 2 {
+		return errors.New("usage: slimdb copy [-mode all|schema|data] [-schema a,b] [-yes] <source> <target>")
+	}
+	src, err := st.Conn(fs.Arg(0))
+	if err != nil {
+		return fmt.Errorf("source %q: %w", fs.Arg(0), err)
+	}
+	dst, err := st.Conn(fs.Arg(1))
+	if err != nil {
+		return fmt.Errorf("target %q: %w", fs.Arg(1), err)
+	}
+	if !db.IsLocalTarget(dst) && !*yes {
+		return fmt.Errorf("%q is not on this machine; pass -yes to overwrite it anyway", dst.Name)
+	}
+	opt := db.CopyOptions{Mode: *mode}
+	if *schemas != "" {
+		opt.Schemas = strings.Split(*schemas, ",")
+	}
+	start := time.Now()
+	report, err := db.Copy(ctx, src, dst, opt, func(line string) { fmt.Fprintln(os.Stderr, line) })
+	if err != nil {
+		return err
+	}
+	fmt.Printf("copied %s into %s (%s) in %s, %d warnings\n", src.Name, dst.Name, *mode, time.Since(start).Round(time.Second), len(report.Warnings))
+	for _, w := range report.Warnings {
+		fmt.Println("  " + w)
+	}
+	return nil
 }
 
 // displayHost turns a wildcard listen address into one a browser can open.

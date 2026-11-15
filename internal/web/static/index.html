@@ -34,6 +34,7 @@
         </select>
       </label>
       <button id="historyBtn">History</button>
+      <button id="copyBtn" title="Copy this database into another connection, e.g. dev into local">Copy to…</button>
     </div>
 
     <div id="editorPane">
@@ -72,6 +73,29 @@
         <button type="button" id="connTest">Test</button>
         <button type="button" id="connCancel">Cancel</button>
         <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="copyDialog">
+    <form id="copyForm">
+      <div class="dialog-head"><h2>Copy database</h2><button type="button" class="icon-btn" data-close>×</button></div>
+      <p class="hint">From <b id="copySource"></b> into another connection of the same kind.</p>
+      <label>Into <select name="target" required></select></label>
+      <p class="hint" id="copyNoTarget" hidden>No other writable connection of this kind. Add your local database with + first, e.g. postgres://postgres:pass@localhost:5432/app (the database is created if it does not exist).</p>
+      <fieldset class="modes">
+        <label class="check"><input type="radio" name="mode" value="all" checked> Everything: schema and data, replaces matching objects in the target</label>
+        <label class="check"><input type="radio" name="mode" value="schema"> Schema only: tables, indexes, functions, no rows</label>
+        <label class="check"><input type="radio" name="mode" value="data"> Data only: replaces the rows of tables that already exist in the target</label>
+      </fieldset>
+      <label id="copySchemasRow">Schemas <input name="schemas" placeholder="all schemas, or e.g. public, mobile_data" autocomplete="off"></label>
+      <label id="copyConfirmRow" hidden>The target is not on this machine. Type its name to overwrite it <input name="confirm" autocomplete="off"></label>
+      <pre id="copyLog" hidden></pre>
+      <div id="copyStatus" class="status"></div>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" id="copyCancel" class="danger" hidden>Stop</button>
+        <button type="submit" class="primary" id="copyStart">Copy</button>
       </div>
     </form>
   </dialog>

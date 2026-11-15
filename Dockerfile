@@ -10,9 +10,15 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o /out/slimdb ./cmd/slimdb \
  && mkdir -p /out/data
 
-FROM gcr.io/distroless/static-debian12:nonroot
+# Alpine rather than distroless: copying a Postgres database needs pg_dump
+# and pg_restore. Version 18 dumps servers up to 18.
+FROM alpine:3.23
+RUN apk add --no-cache postgresql18-client ca-certificates tzdata \
+ && adduser -D -H -u 65532 nonroot
 COPY --from=build /out/slimdb /usr/local/bin/slimdb
-COPY --from=build --chown=nonroot:nonroot /out/data /data
+# UID 65532 matches the earlier distroless image, so existing volumes stay readable.
+COPY --from=build --chown=65532:65532 /out/data /data
+USER 65532:65532
 
 # SLIMDB_HOME:            connections and history, mount a volume here
 # SLIMDB_LISTEN_ANY:      listen on all interfaces inside the container;

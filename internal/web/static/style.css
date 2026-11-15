@@ -221,7 +221,7 @@ dialog {
 dialog::backdrop { background: rgba(0, 0, 0, .45); }
 dialog h2 { margin: 0 0 12px; font-size: 15px; }
 dialog label { display: block; margin-bottom: 10px; color: var(--muted); }
-dialog label input:not([type=checkbox]) {
+dialog label input:not([type=checkbox]):not([type=radio]) {
   display: block;
   width: 100%;
   margin-top: 4px;
@@ -328,4 +328,24 @@ dialog label.check { display: flex; gap: 6px; align-items: center; color: var(--
   white-space: pre-wrap;
   overflow-wrap: break-word;
   box-sizing: border-box;
+}
+
+/* ---------- copy dialog ---------- */
+
+#copyDialog { width: min(640px, calc(100vw - 32px)); }
+#copyDialog select { width: 100%; margin-top: 4px; }
+fieldset.modes { border: none; padding: 0; margin: 0 0 10px; }
+fieldset.modes label.check { align-items: flex-start; margin-bottom: 6px; }
+fieldset.modes input { margin: 2px 0 0; flex: none; }
+#copyLog {
+  max-height: 220px;
+  overflow: auto;
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: 11.5px/1.45 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
