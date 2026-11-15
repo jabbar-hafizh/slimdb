@@ -38,7 +38,7 @@
 
     <div id="editorPane">
       <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"
-        placeholder="Pick a connection on the left, then write a query.&#10;&#10;Postgres:  select * from users limit 10;&#10;MongoDB:   db.users.find({ age: { $gt: 30 } }).sort({ name: 1 })&#10;&#10;Ctrl/Cmd+Enter runs the selection, or the block around the cursor (blocks are separated by a blank line)."></textarea>
+        placeholder="Pick a connection on the left, then write a query.&#10;&#10;Postgres:  select * from users limit 10;&#10;MongoDB:   db.users.find({ age: { $gt: 30 } }).sort({ name: 1 })&#10;&#10;Ctrl/Cmd+Enter runs the selection, or the block around the cursor (blocks are separated by a blank line).&#10;Tab accepts a suggestion, Ctrl+Space shows suggestions."></textarea>
     </div>
 
     <div id="splitter" title="Drag to resize"></div>
@@ -90,5 +90,6 @@
 
   <div id="toast" role="status"></div>
   <script src="/static/app.js"></script>
+  <script src="/static/complete.js"></script>
 </body>
 </html>

@@ -11,9 +11,12 @@ listens on localhost.
 
 ## Features
 
-- **Connections** for PostgreSQL and MongoDB, saved locally, with an optional read-only flag
+- **Connections** for PostgreSQL and MongoDB, saved locally, with an optional read-only flag.
+  A name like `team/dev/app` puts the connection in a `team` folder in the sidebar.
 - **Object tree**: schemas, tables and views (Postgres) or databases and collections (MongoDB), with a filter
-- **Query console** per connection, kept between sessions
+- **Query console** per connection, kept between sessions, with autocomplete:
+  keywords, snippets (`sel` + Tab gives `select * from` and lists tables), tables,
+  columns (also after an alias, `c.`), Mongo collections, methods, fields and operators
   - Postgres: plain SQL, several statements per run, explicit transactions work
   - MongoDB: mongosh syntax, e.g. `db.users.find({ age: { $gt: 30 } }).sort({ name: 1 })`
 - **Results grid**: typed column headers, sort by column, NULLs marked, full value on double-click, JSON view for documents, copy as CSV or JSON
@@ -70,6 +73,7 @@ Or add connections from the terminal:
 ```sh
 slimdb conn add local-pg postgres://postgres:secret@localhost:5432/app
 slimdb conn add -read-only prod-replica postgres://readonly@replica:5432/app
+slimdb conn rename local-pg work/dev/app
 slimdb conn list
 ```
 
@@ -79,6 +83,9 @@ slimdb conn list
 | --- | --- |
 | Ctrl/Cmd + Enter | Run the selection, or the block around the cursor (blocks are separated by a blank line) |
 | Ctrl/Cmd + Shift + Enter | Run the whole editor |
+| Tab | Accept the highlighted suggestion |
+| Ctrl + Space | Show suggestions |
+| Up/Down, then Enter | Pick another suggestion |
 | Click a table | Describe it |
 | Double-click a table | Query its first 100 rows |
 | Double-click a cell | Show the full value |

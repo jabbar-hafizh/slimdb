@@ -35,6 +35,7 @@ Usage:
   slimdb mcp                                          run the MCP server on stdio
   slimdb conn list                                    list saved connections
   slimdb conn add [-read-only] <name> <url>           save a connection
+  slimdb conn rename <name> <new-name>                rename a connection
   slimdb conn rm <name>                               delete a connection
   slimdb version
 
@@ -134,7 +135,7 @@ func serve(ctx context.Context, st *store.Store, args []string) error {
 
 func connCmd(st *store.Store, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: slimdb conn list | add [-read-only] <name> <url> | rm <name>")
+		return errors.New("usage: slimdb conn list | add [-read-only] <name> <url> | rename <name> <new-name> | rm <name>")
 	}
 	switch args[0] {
 	case "list", "ls":
@@ -160,6 +161,20 @@ func connCmd(st *store.Store, args []string) error {
 			return err
 		}
 		fmt.Printf("saved %s connection %q\n", c.Kind, c.Name)
+		return nil
+	case "rename", "mv":
+		if len(args) != 3 {
+			return errors.New("usage: slimdb conn rename <name> <new-name>")
+		}
+		c, err := st.Conn(args[1])
+		if err != nil {
+			return err
+		}
+		c.Name = args[2]
+		if _, err := st.Save(c); err != nil {
+			return err
+		}
+		fmt.Printf("renamed %q to %q\n", args[1], c.Name)
 		return nil
 	case "rm", "remove", "delete":
 		if len(args) != 2 {

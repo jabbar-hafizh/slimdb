@@ -72,6 +72,7 @@ const state = {
   active: null,         // the selected connection
   trees: {},            // conn id -> { nodes, error, loading }
   expanded: new Set(storage.get('expanded', [])),
+  collapsed: new Set(storage.get('collapsed', [])), // connection folders the user closed
   activeObject: null,   // tree key of the highlighted table/collection
   results: [],
   tab: 0,
@@ -108,6 +109,7 @@ function selectConnection(conn, { expand = true } = {}) {
   if (state.active && state.active.id !== conn.id) saveEditor();
   const switching = !state.active || state.active.id !== conn.id;
   setActive(conn);
+  if (typeof completer !== 'undefined') completer.close();
   storage.set('activeConn', conn.id);
   if (switching) {
     editor.value = storage.get('editor.' + conn.id, '');
@@ -120,6 +122,7 @@ function selectConnection(conn, { expand = true } = {}) {
 }
 
 async function loadTree(conn) {
+  if (typeof completer !== 'undefined') completer.reset();
   state.trees[conn.id] = { loading: true };
   renderTree();
   try {
@@ -171,58 +174,90 @@ function renderTree() {
     root.append(el('div', { class: 'tree-msg' }, 'No connections yet. Click + to add one.'));
     return;
   }
+  // A name like "li3/dev/db_bvt_v2" puts the connection in folder "li3".
+  const folders = new Map();
   for (const conn of state.conns) {
-    const key = 'c:' + conn.id;
-    const open = state.expanded.has(key);
+    const slash = conn.name.indexOf('/');
+    const folder = slash > 0 ? conn.name.slice(0, slash) : '';
+    if (!folders.has(folder)) folders.set(folder, []);
+    folders.get(folder).push(conn);
+  }
+  for (const [folder, conns] of folders) {
+    if (!folder) {
+      for (const conn of conns) renderConn(root, conn, filter, 0, conn.name);
+      continue;
+    }
+    const key = 'f:' + folder;
+    const open = !state.collapsed.has(key);
     root.append(el('div', {
-      class: 'node conn' + (state.active && state.active.id === conn.id ? ' active' : ''),
-      role: 'treeitem',
-      'aria-expanded': open,
+      class: 'node folder', role: 'treeitem', 'aria-expanded': open,
       onclick: () => {
-        const wasActive = state.active && state.active.id === conn.id;
-        if (wasActive) {
-          toggle(key);
-          if (state.expanded.has(key) && !state.trees[conn.id]) loadTree(conn);
-          renderTree();
-        } else {
-          selectConnection(conn);
-        }
+        if (open) state.collapsed.add(key); else state.collapsed.delete(key);
+        storage.set('collapsed', [...state.collapsed]);
+        renderTree();
       },
     },
     el('span', { class: 'twisty' }, open ? '▾' : '▸'),
-    kindIcon(conn.kind),
-    el('span', { class: 'label' }, conn.name),
-    conn.readOnly ? el('span', { class: 'badge' }, 'RO') : null,
-    el('button', {
-      class: 'edit', title: 'Edit connection',
-      onclick: (e) => { e.stopPropagation(); openConnDialog(conn); },
-    }, '✎')));
-
-    if (!open) continue;
-    const tree = state.trees[conn.id];
-    if (!tree || tree.loading) {
-      root.append(el('div', { class: 'tree-msg', style: 'padding-left:28px' }, 'Loading…'));
-      continue;
-    }
-    if (tree.error) {
-      root.append(el('div', { class: 'tree-msg err', style: 'padding-left:28px' }, tree.error));
-      root.append(el('div', { class: 'tree-msg', style: 'padding-left:28px' },
-        el('button', { onclick: () => loadTree(conn) }, 'Retry')));
-      continue;
-    }
-    root.append(el('div', { class: 'tree-msg', style: 'padding-left:28px' },
-      el('button', { onclick: () => loadTree(conn), title: 'Reload objects' }, '↻ refresh')));
-    for (const group of tree.nodes) renderGroup(root, conn, group, filter);
+    el('span', { class: 'label' }, folder),
+    el('span', { class: 'badge' }, String(conns.length))));
+    if (open) for (const conn of conns) renderConn(root, conn, filter, 14, conn.name.slice(folder.length + 1));
   }
 }
 
-function renderGroup(root, conn, group, filter) {
+function renderConn(root, conn, filter, indent, label) {
+  const key = 'c:' + conn.id;
+  const open = state.expanded.has(key);
+  const pad = (n) => `padding-left:${n + indent}px`;
+  root.append(el('div', {
+    class: 'node conn' + (state.active && state.active.id === conn.id ? ' active' : ''),
+    style: indent ? pad(6) : null,
+    title: conn.name,
+    role: 'treeitem',
+    'aria-expanded': open,
+    onclick: () => {
+      const wasActive = state.active && state.active.id === conn.id;
+      if (wasActive) {
+        toggle(key);
+        if (state.expanded.has(key) && !state.trees[conn.id]) loadTree(conn);
+        renderTree();
+      } else {
+        selectConnection(conn);
+      }
+    },
+  },
+  el('span', { class: 'twisty' }, open ? '▾' : '▸'),
+  kindIcon(conn.kind),
+  el('span', { class: 'label' }, label),
+  conn.readOnly ? el('span', { class: 'badge' }, 'RO') : null,
+  el('button', {
+    class: 'edit', title: 'Edit connection',
+    onclick: (e) => { e.stopPropagation(); openConnDialog(conn); },
+  }, '✎')));
+
+  if (!open) return;
+  const tree = state.trees[conn.id];
+  if (!tree || tree.loading) {
+    root.append(el('div', { class: 'tree-msg', style: pad(28) }, 'Loading…'));
+    return;
+  }
+  if (tree.error) {
+    root.append(el('div', { class: 'tree-msg err', style: pad(28) }, tree.error));
+    root.append(el('div', { class: 'tree-msg', style: pad(28) },
+      el('button', { onclick: () => loadTree(conn) }, 'Retry')));
+    return;
+  }
+  root.append(el('div', { class: 'tree-msg', style: pad(28) },
+    el('button', { onclick: () => loadTree(conn), title: 'Reload objects' }, '↻ refresh')));
+  for (const group of tree.nodes) renderGroup(root, conn, group, filter, indent);
+}
+
+function renderGroup(root, conn, group, filter, indent = 0) {
   const key = `g:${conn.id}:${group.name}`;
   const children = (group.children || []).filter((c) => !filter || c.name.toLowerCase().includes(filter));
   if (filter && children.length === 0) return;
   const open = filter ? true : state.expanded.has(key);
   root.append(el('div', {
-    class: 'node', style: 'padding-left:22px', role: 'treeitem', 'aria-expanded': open,
+    class: 'node', style: `padding-left:${22 + indent}px`, role: 'treeitem', 'aria-expanded': open,
     onclick: () => {
       toggle(key);
       if (conn.kind === 'mongo' && state.active && state.active.id === conn.id) setDatabase(group.name);
@@ -239,7 +274,7 @@ function renderGroup(root, conn, group, filter) {
     const ckey = `o:${conn.id}:${group.name}:${child.name}`;
     root.append(el('div', {
       class: 'node' + (state.activeObject === ckey ? ' active' : ''),
-      style: 'padding-left:40px', role: 'treeitem',
+      style: `padding-left:${40 + indent}px`, role: 'treeitem',
       title: 'Click to describe, double-click to query',
       onclick: () => {
         state.activeObject = ckey;
@@ -288,6 +323,7 @@ editor.addEventListener('input', () => {
 });
 
 editor.addEventListener('keydown', (e) => {
+  if (completer.onKeydown(e)) return;
   if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey) {
     e.preventDefault();
     editor.setRangeText('  ', editor.selectionStart, editor.selectionEnd, 'end');

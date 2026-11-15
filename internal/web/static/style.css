@@ -99,6 +99,7 @@ button.danger { color: var(--danger); }
 .node .edit { margin-left: auto; opacity: 0; padding: 0 6px; border: none; background: none; }
 .node:hover .edit { opacity: 1; }
 .node.conn { font-weight: 600; padding-top: 4px; padding-bottom: 4px; }
+.node.folder { font-weight: 600; color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; padding-top: 6px; }
 .kind-icon { width: 14px; height: 14px; flex: none; border-radius: 3px; font-size: 9px; line-height: 14px; text-align: center; font-weight: 700; color: #fff; }
 .k-postgres { background: #336791; }
 .k-mongo { background: #13aa52; }
@@ -283,4 +284,48 @@ dialog label.check { display: flex; gap: 6px; align-items: center; color: var(--
 @media (max-width: 720px) {
   body { flex-direction: column; }
   #sidebar { width: auto; height: 32vh; resize: none; border-right: none; border-bottom: 1px solid var(--border); }
+}
+
+/* ---------- autocomplete ---------- */
+
+#complete {
+  position: fixed;
+  z-index: 50;
+  margin: 0;
+  padding: 3px 0;
+  list-style: none;
+  min-width: 220px;
+  max-width: 520px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  font: 12.5px/1.4 var(--mono);
+}
+#complete li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 10px 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#complete li.on { background: var(--hover); }
+#complete .ck { width: 30px; flex: none; font-size: 10px; color: var(--muted); text-align: right; }
+#complete .ck-column, #complete .ck-field { color: #c77dbb; }
+#complete .ck-table, #complete .ck-view, #complete .ck-matview, #complete .ck-foreign, #complete .ck-collection { color: #56a8f5; }
+#complete .ck-snippet { color: var(--ok); }
+#complete .cl { overflow: hidden; text-overflow: ellipsis; }
+#complete .cd { margin-left: auto; padding-left: 12px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+
+.complete-mirror {
+  position: absolute;
+  top: 0;
+  left: -9999px;
+  visibility: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
 }
